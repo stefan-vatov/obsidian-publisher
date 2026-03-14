@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The release history is generated from Conventional Commits via Cocogitto.
 
 - - -
+## [v0.1.3](https://github.com/stefan-vatov/obsidian-publisher/compare/332af44990a92ded0cd369780fef6571cec5e521..v0.1.3) - 2026-03-14
+#### Bug Fixes
+- (**ci**) install cocogitto directly in release workflow (#9) - ([332af44](https://github.com/stefan-vatov/obsidian-publisher/commit/332af44990a92ded0cd369780fef6571cec5e521)) - Stefan Vatov
+
+- - -
+
 ## [v0.1.2](https://github.com/stefan-vatov/obsidian-publisher/compare/ea06cf475492b54fa4a59db3bc6e44d8c434b07b..v0.1.2) - 2026-03-14
 #### Bug Fixes
 - (**ci**) remove duplicate v prefix from release tag (#8) - ([ea06cf4](https://github.com/stefan-vatov/obsidian-publisher/commit/ea06cf475492b54fa4a59db3bc6e44d8c434b07b)) - Stefan Vatov
