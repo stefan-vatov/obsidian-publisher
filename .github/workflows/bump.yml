@@ -39,7 +39,7 @@ jobs:
         uses: cocogitto/cocogitto-action@v4
         with:
           command: bump
-          args: --auto
+          args: --auto --skip-ci
           git-user: github-actions[bot]
           git-user-email: github-actions[bot]@users.noreply.github.com
 
