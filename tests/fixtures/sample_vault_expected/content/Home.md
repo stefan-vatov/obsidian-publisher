@@ -6,12 +6,12 @@ title = "Home"
 aliases = ["Start"]
 
 [[extra.backlinks]]
-path = "/snippets/shared/"
-title = "Shared Snippets"
-
-[[extra.backlinks]]
 path = "/projects/roadmap/"
 title = "Product Roadmap"
+
+[[extra.backlinks]]
+path = "/snippets/shared/"
+title = "Shared Snippets"
 
 [taxonomies]
 tags = [
