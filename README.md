@@ -117,10 +117,10 @@ cargo test
 
 ## Releases
 
-Merges to `main` trigger two GitHub Actions workflows:
+Merges to `main` trigger the `Bump` workflow, which then calls the reusable `Release` workflow:
 
 1. **Bump** — Cocogitto computes the next version from Conventional Commits, updates `Cargo.toml`, `CHANGELOG.md`, commits, and pushes a `v*.*.*` tag
-2. **Release** — triggered by the new tag, builds a Linux `x86_64-unknown-linux-musl` binary and publishes the archive and checksum to GitHub Releases
+2. **Release** — checks out that exact tag, builds a Linux `x86_64-unknown-linux-musl` binary, and publishes the archive and checksum to GitHub Releases
 
 The published release asset is named like:
 

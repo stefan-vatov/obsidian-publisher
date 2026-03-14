@@ -17,6 +17,9 @@ jobs:
   bump:
     if: github.ref_name == 'main'
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      release_tag: ${{ steps.release_ref.outputs.release_tag }}
 
     steps:
       - name: Checkout main
@@ -39,3 +42,14 @@ jobs:
           args: --auto
           git-user: github-actions[bot]
           git-user-email: github-actions[bot]@users.noreply.github.com
+
+      - name: Resolve release ref
+        id: release_ref
+        run: echo "release_tag=v${{ steps.bump.outputs.version }}" >> "${GITHUB_OUTPUT}"
+
+  release:
+    needs: bump
+    uses: ./.github/workflows/release.yml
+    with:
+      release_tag: ${{ needs.bump.outputs.release_tag }}
+    secrets: inherit
