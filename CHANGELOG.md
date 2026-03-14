@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The release history is generated from Conventional Commits via Cocogitto.
 
 - - -
+## [v0.1.2](https://github.com/stefan-vatov/obsidian-publisher/compare/ea06cf475492b54fa4a59db3bc6e44d8c434b07b..v0.1.2) - 2026-03-14
+#### Bug Fixes
+- (**ci**) remove duplicate v prefix from release tag (#8) - ([ea06cf4](https://github.com/stefan-vatov/obsidian-publisher/commit/ea06cf475492b54fa4a59db3bc6e44d8c434b07b)) - Stefan Vatov
+
+- - -
+
 ## [v0.1.1](https://github.com/stefan-vatov/obsidian-publisher/compare/cf0f8e1bd72ad5db2cfd0572c509151a1d56134c..v0.1.1) - 2026-03-14
 #### Bug Fixes
 - (**ci**) use semver range qualifier for cargo-edit version (#5) - ([fc2d205](https://github.com/stefan-vatov/obsidian-publisher/commit/fc2d2059664a0319c67302386ef93eb869dc105e)) - Stefan Vatov
