@@ -30,13 +30,15 @@ jobs:
 
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
 
       - name: Install cargo-edit
-        run: cargo install cargo-edit --locked --version 0.13.9
+        run: cargo install cargo-edit --version 0.13
 
       - name: Bump version and push tag
         id: bump
-        uses: cocogitto/cocogitto-action@v4
+        uses: cocogitto/cocogitto-action@v4.1.0
         with:
           command: bump
           args: --auto --skip-ci
