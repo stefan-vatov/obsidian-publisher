@@ -2,11 +2,11 @@
 name = "obsidian-publisher"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.87"
+rust-version = "1.88"
 license = "MIT"
 description = "Obsidian vault to Zola static site preprocessor"
-repository = "https://github.com/thethracian/obsidian-publisher"
-homepage = "https://github.com/thethracian/obsidian-publisher"
+repository = "https://github.com/stefan-vatov/obsidian-publisher"
+homepage = "https://github.com/stefan-vatov/obsidian-publisher"
 keywords = ["obsidian", "zola", "static-site", "markdown", "preprocessor"]
 categories = ["command-line-utilities", "text-processing"]
 readme = "README.md"

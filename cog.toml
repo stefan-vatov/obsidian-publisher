@@ -1,0 +1,50 @@
+tag_prefix = "v"
+from_latest_tag = true
+ignore_merge_commits = true
+branch_whitelist = ["main"]
+
+pre_bump_hooks = [
+  "cargo test",
+  "cargo set-version {{version}}",
+  "cargo check --release",
+  "git add Cargo.toml Cargo.lock",
+]
+
+post_bump_hooks = [
+  "git push origin HEAD:main",
+  "git push origin v{{version}}",
+]
+
+[changelog]
+path = "CHANGELOG.md"
+template = "remote"
+remote = "github.com"
+owner = "stefan-vatov"
+repository = "obsidian-publisher"
+
+[commit_types.build]
+bump_patch = true
+
+[commit_types.chore]
+bump_patch = true
+
+[commit_types.ci]
+bump_patch = true
+
+[commit_types.docs]
+bump_patch = true
+
+[commit_types.perf]
+bump_patch = true
+
+[commit_types.refactor]
+bump_patch = true
+
+[commit_types.revert]
+bump_patch = true
+
+[commit_types.style]
+bump_patch = true
+
+[commit_types.test]
+bump_patch = true

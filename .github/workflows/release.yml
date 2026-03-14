@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  workflow_call:
+    inputs:
+      release_tag:
+        description: Semver tag to build and publish.
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Semver tag to build and publish.
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  BINARY_NAME: obsidian-publisher
+  TARGET: x86_64-unknown-linux-musl
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag }}
+
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: refs/tags/${{ inputs.release_tag }}
+
+      - name: Resolve release version
+        run: |
+          tag="${RELEASE_TAG}"
+          version="${tag#v}"
+
+          {
+            echo "RELEASE_VERSION=${version}"
+            echo "RELEASE_TAG=${tag}"
+          } >> "${GITHUB_ENV}"
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: ${{ env.TARGET }}
+          rustflags: ""
+
+      - name: Install Linux build dependencies
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Install Cocogitto
+        uses: cocogitto/cocogitto-action@v4
+        with:
+          install-only: "true"
+
+      - name: Build Linux release binary
+        run: cargo build --locked --release --target "${TARGET}"
+
+      - name: Package release artifacts
+        run: |
+          version="${RELEASE_VERSION}"
+          archive="${BINARY_NAME}-${version}-${TARGET}.tar.gz"
+
+          rm -rf dist
+          mkdir -p "dist/${BINARY_NAME}-${version}-${TARGET}"
+          cp "target/${TARGET}/release/${BINARY_NAME}" "dist/${BINARY_NAME}-${version}-${TARGET}/"
+          cp README.md LICENSE CHANGELOG.md "dist/${BINARY_NAME}-${version}-${TARGET}/"
+
+          tar -C dist -czf "dist/${archive}" "${BINARY_NAME}-${version}-${TARGET}"
+          cd dist && sha256sum "${archive}" > "${archive}.sha256"
+
+          {
+            echo "RELEASE_ARCHIVE=dist/${archive}"
+            echo "RELEASE_CHECKSUM=dist/${archive}.sha256"
+          } >> "${GITHUB_ENV}"
+
+      - name: Generate release notes
+        run: cog changelog --at "${RELEASE_TAG}" --template remote > RELEASE_NOTES.md
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" \
+              "${RELEASE_ARCHIVE}" \
+              "${RELEASE_CHECKSUM}" \
+              --clobber \
+              --repo "${GITHUB_REPOSITORY}"
+            gh release edit "${RELEASE_TAG}" \
+              --title "${RELEASE_TAG}" \
+              --notes-file RELEASE_NOTES.md \
+              --repo "${GITHUB_REPOSITORY}"
+          else
+            gh release create "${RELEASE_TAG}" \
+              "${RELEASE_ARCHIVE}" \
+              "${RELEASE_CHECKSUM}" \
+              --title "${RELEASE_TAG}" \
+              --notes-file RELEASE_NOTES.md \
+              --repo "${GITHUB_REPOSITORY}"
+          fi
