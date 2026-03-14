@@ -34,7 +34,7 @@ jobs:
           rustflags: ""
 
       - name: Install cargo-edit
-        run: cargo install cargo-edit --version 0.13
+        run: cargo install cargo-edit --version ^0.13
 
       - name: Bump version and push tag
         id: bump
