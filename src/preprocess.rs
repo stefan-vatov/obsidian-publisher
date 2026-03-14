@@ -1474,7 +1474,7 @@ impl Publisher {
         let backlink_map = backlinks
             .into_iter()
             .map(|(target_id, sources)| {
-                let items = sources
+                let mut items = sources
                     .into_iter()
                     .map(|source_id| BacklinkItem {
                         title: notes[source_id]
@@ -1485,6 +1485,7 @@ impl Publisher {
                         path: notes[source_id].url_path.clone(),
                     })
                     .collect::<Vec<_>>();
+                items.sort_by(|a, b| a.path.cmp(&b.path));
                 (target_id, items)
             })
             .collect::<HashMap<_, _>>();
