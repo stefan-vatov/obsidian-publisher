@@ -122,7 +122,11 @@ impl Publisher {
             ));
         }
 
-        let (notes, assets, scan_errors) = self.scan_vault()?;
+        let (mut notes, assets, scan_errors) = self.scan_vault()?;
+        notes.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+        for (i, note) in notes.iter_mut().enumerate() {
+            note.id = i;
+        }
         let lookup = build_lookup(&notes);
         let asset_lookup = build_asset_lookup(&assets);
         let published_ids: HashSet<usize> =
