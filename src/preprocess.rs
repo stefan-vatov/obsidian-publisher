@@ -69,6 +69,20 @@ pub struct Publisher {
 
 impl Publisher {
     pub fn new(runtime: RuntimeConfig, reporter: Reporter) -> Result<Self> {
+        // Validate that output is not inside the vault (library-level guard).
+        // Use resolve_through_existing_ancestors so that non-existent output
+        // paths with symlinked parents are still caught.
+        let vault_resolved = crate::config::resolve_through_existing_ancestors(&runtime.vault_root);
+        let output_resolved =
+            crate::config::resolve_through_existing_ancestors(&runtime.output_root);
+        if output_resolved.starts_with(&vault_resolved) {
+            return Err(anyhow!(
+                "output directory ({}) must not be inside the vault ({})",
+                runtime.output_root.display(),
+                runtime.vault_root.display()
+            ));
+        }
+
         let ignore_matcher = build_ignore_matcher(&runtime.app.ignore_globs)?;
         Ok(Self {
             runtime,
@@ -190,7 +204,27 @@ impl Publisher {
                 }
             }
             self.write_notes(&notes, processed.as_slice(), &backlinks)?;
-            self.write_section_indexes(processed.as_slice())?;
+            if mode == RunMode::Full {
+                self.write_section_indexes(processed.as_slice())?;
+            } else {
+                // On incremental runs, compute section dirs from ALL published
+                // notes (not just the processed subset), then prune any stale
+                // _index.md files left behind after the last note in a folder
+                // was deleted/unpublished.
+                let all_published: Vec<ProcessedNote> = notes
+                    .iter()
+                    .filter(|n| n.published)
+                    .map(|n| ProcessedNote {
+                        note_id: n.id,
+                        output_relative_path: n.relative_path.clone(),
+                        content: String::new(),
+                        outbound_ids: HashSet::new(),
+                        metadata: n.metadata.clone(),
+                    })
+                    .collect();
+                self.write_section_indexes(&all_published)?;
+                self.prune_empty_section_indexes(&all_published)?;
+            }
             if self.runtime.app.graph.enabled {
                 self.write_graph(&graph)?;
             }
@@ -644,6 +678,16 @@ impl Publisher {
                 continue;
             }
 
+            // Reject symlinked files: they could point outside the vault,
+            // which would silently publish content the user did not intend.
+            if path.symlink_metadata().is_ok_and(|m| m.is_symlink()) {
+                self.reporter.trace(format!(
+                    "skipping symlink {}",
+                    path.display()
+                ));
+                continue;
+            }
+
             let rel = match path.strip_prefix(&self.runtime.vault_root) {
                 Ok(rel) => rel.to_path_buf(),
                 Err(err) => {
@@ -656,7 +700,7 @@ impl Publisher {
             };
 
             if self.is_ignored_rel(&rel) {
-                self.reporter.debug(format!("ignoring {}", rel.display()));
+                self.reporter.trace(format!("ignoring {}", rel.display()));
                 continue;
             }
 
@@ -668,10 +712,18 @@ impl Publisher {
 
             if ext == "md" {
                 match self.parse_note(path, &rel, notes.len()) {
-                    Ok(note) => notes.push(note),
+                    Ok(note) => {
+                        self.reporter.trace(format!(
+                            "parsed {} (published={})",
+                            rel.display(),
+                            note.published
+                        ));
+                        notes.push(note);
+                    }
                     Err(err) => errors.push(format!("failed to parse {}: {err:#}", rel.display())),
                 }
             } else {
+                self.reporter.trace(format!("found asset {}", rel.display()));
                 assets.push(AssetFile {
                     source_path: path.to_path_buf(),
                     relative_path: rel,
@@ -1345,11 +1397,14 @@ impl Publisher {
             .parent()
             .unwrap_or_else(|| Path::new(""));
 
+        // Prefer published notes over unpublished ones so that a closer
+        // unpublished note doesn't shadow a valid published target.
         candidates.iter().copied().min_by_key(|candidate_id| {
             let note = &notes[*candidate_id];
+            let unpublished = if note.published { 0u8 } else { 1u8 };
             let distance = path_distance_between(current_parent, &note.relative_path);
             let rel = path_to_unix(&note.relative_path);
-            (distance, rel)
+            (unpublished, distance, rel)
         })
     }
 
@@ -1651,6 +1706,48 @@ impl Publisher {
             fs::write(&index_path, content).with_context(|| {
                 format!("failed to write section index {}", index_path.display())
             })?;
+        }
+
+        Ok(())
+    }
+
+    fn prune_empty_section_indexes(&self, all_published: &[ProcessedNote]) -> Result<()> {
+        let content_root = self.runtime.output_root.join("content");
+        if !content_root.exists() {
+            return Ok(());
+        }
+
+        // Collect all directories that should have _index.md files.
+        let mut live_dirs: BTreeSet<PathBuf> = BTreeSet::new();
+        live_dirs.insert(PathBuf::new()); // root always lives
+        for note in all_published {
+            let mut parent = note.output_relative_path.parent().map(Path::to_path_buf);
+            while let Some(dir) = parent {
+                live_dirs.insert(dir.clone());
+                parent = dir.parent().map(Path::to_path_buf);
+            }
+        }
+
+        // Walk content/ and remove _index.md in directories that are not in the live set.
+        for entry in WalkDir::new(&content_root)
+            .into_iter()
+            .filter_map(Result::ok)
+        {
+            let path = entry.path();
+            if path.file_name().and_then(|s| s.to_str()) != Some("_index.md") {
+                continue;
+            }
+            let dir = path
+                .parent()
+                .and_then(|p| p.strip_prefix(&content_root).ok())
+                .map(Path::to_path_buf)
+                .unwrap_or_default();
+
+            if !live_dirs.contains(&dir) {
+                fs::remove_file(path).with_context(|| {
+                    format!("failed to remove stale section index {}", path.display())
+                })?;
+            }
         }
 
         Ok(())
@@ -2194,6 +2291,9 @@ fn render_note_with_frontmatter(
             let yaml_value = toml_to_yaml(toml::Value::Table(root));
             let fm =
                 serde_yaml::to_string(&yaml_value).context("failed to write YAML frontmatter")?;
+            // serde_yaml::to_string emits a leading "---\n"; strip it so we
+            // control the fences ourselves and avoid doubling.
+            let fm = fm.strip_prefix("---\n").unwrap_or(&fm);
             Ok(format!("---\n{}---\n\n{}\n", fm, body.trim_end()))
         }
     }
@@ -2644,6 +2744,112 @@ mod tests {
         assert!(b_after.contains("title = \"A2\""));
         assert!(b_after.contains("path = \"/a/\""));
         assert!(c_after.contains("SENTINEL_C"));
+    }
+
+    #[test]
+    fn yaml_frontmatter_does_not_double_document_markers() {
+        let metadata = ParsedMetadata {
+            title: Some("Test".to_string()),
+            ..Default::default()
+        };
+        let rendered = render_note_with_frontmatter(
+            "body text",
+            &metadata,
+            "Test",
+            "test",
+            None,
+            FrontmatterOutput::Yaml,
+        )
+        .expect("render yaml");
+
+        // Should start with exactly one "---" fence, not two.
+        assert!(rendered.starts_with("---\n"));
+        assert!(!rendered.starts_with("---\n---\n"));
+        assert!(rendered.contains("title: Test"));
+        assert!(rendered.contains("body text"));
+    }
+
+    #[test]
+    fn link_resolution_prefers_published_over_unpublished() {
+        let tmp = TempDir::new().expect("tempdir");
+        let vault = tmp.path().join("vault");
+        let out = tmp.path().join("site");
+        fs::create_dir_all(vault.join("nearby")).expect("mkdir");
+
+        // Nearby unpublished note with same stem
+        fs::write(
+            vault.join("nearby/Target.md"),
+            "---\npublish: false\n---\nUnpublished\n",
+        )
+        .expect("write unpublished");
+
+        // Far-away published note with same stem
+        fs::write(
+            vault.join("Target.md"),
+            "---\npublish: true\n---\nPublished\n",
+        )
+        .expect("write published");
+
+        // Note linking to "Target" — should resolve to the published one
+        fs::write(
+            vault.join("nearby/Note.md"),
+            "---\npublish: true\n---\n[[Target]]\n",
+        )
+        .expect("write note");
+
+        run_publisher(runtime(&vault, &out)).expect("publish success");
+        let note = fs::read_to_string(out.join("content/nearby/Note.md")).expect("note output");
+        // Should link to the published /target/, not show a broken-link span
+        assert!(note.contains("[Target](/target/)"));
+        assert!(!note.contains("broken-link"));
+    }
+
+    #[test]
+    fn incremental_prunes_stale_section_index_after_last_note_deleted() {
+        let tmp = TempDir::new().expect("tempdir");
+        let vault = tmp.path().join("vault");
+        let out = tmp.path().join("site");
+        fs::create_dir_all(vault.join("lonely")).expect("mkdir");
+
+        // Single note in a subfolder
+        fs::write(
+            vault.join("lonely/Only.md"),
+            "---\npublish: true\n---\nOnly note\n",
+        )
+        .expect("write only");
+
+        run_publisher(runtime(&vault, &out)).expect("initial publish");
+        assert!(out.join("content/lonely/_index.md").exists());
+
+        // Delete the only note in that folder
+        fs::remove_file(vault.join("lonely/Only.md")).expect("remove only");
+
+        let changed_paths = vec![vault.join("lonely/Only.md")];
+        run_publisher_incremental(runtime(&vault, &out), &changed_paths)
+            .expect("incremental publish");
+
+        // The orphan _index.md should be pruned
+        assert!(
+            !out.join("content/lonely/_index.md").exists(),
+            "stale _index.md should be removed after last note deleted"
+        );
+    }
+
+    #[test]
+    fn publisher_rejects_nonexistent_output_inside_vault() {
+        let tmp = TempDir::new().expect("tempdir");
+        let vault = tmp.path().join("vault");
+        fs::create_dir_all(&vault).expect("mkdir");
+
+        // output_root is inside the vault but does not exist yet
+        let out = vault.join("site");
+        let reporter = Reporter::new(0, true);
+
+        let result = Publisher::new(runtime(&vault, &out), reporter);
+        assert!(
+            result.is_err(),
+            "Publisher::new should reject output inside vault even when it doesn't exist"
+        );
     }
 
     #[test]

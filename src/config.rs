@@ -207,6 +207,37 @@ impl RuntimeConfig {
     }
 }
 
+/// Resolve a path by canonicalizing its deepest existing ancestor, then
+/// appending the remaining (not-yet-created) tail components. This catches
+/// symlinked parents even when the final directory does not exist yet.
+pub fn resolve_through_existing_ancestors(path: &Path) -> PathBuf {
+    if let Ok(canonical) = path.canonicalize() {
+        return canonical;
+    }
+
+    let mut tail_components = Vec::new();
+    let mut current = path.to_path_buf();
+    loop {
+        if let Ok(canonical) = current.canonicalize() {
+            let mut resolved = canonical;
+            for component in tail_components.into_iter().rev() {
+                resolved.push(component);
+            }
+            return resolved;
+        }
+        if let Some(file_name) = current.file_name() {
+            tail_components.push(file_name.to_os_string());
+        } else {
+            break;
+        }
+        if !current.pop() {
+            break;
+        }
+    }
+
+    path.to_path_buf()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

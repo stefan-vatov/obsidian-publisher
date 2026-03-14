@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 use clap::{ArgAction, Parser};
-use obsidian_publisher::config::RuntimeConfig;
+use obsidian_publisher::config::{RuntimeConfig, resolve_through_existing_ancestors};
 use obsidian_publisher::preprocess::run_publisher;
 use obsidian_publisher::watch::run_watch;
 use std::path::PathBuf;
@@ -34,10 +34,25 @@ fn main() {
 fn run() -> Result<()> {
     let args = Cli::parse();
 
-    if !args.vault.exists() {
+    let vault = args.vault.canonicalize().unwrap_or_else(|_| args.vault.clone());
+
+    if !vault.exists() {
         return Err(anyhow!(
             "vault path does not exist: {}",
-            args.vault.display()
+            vault.display()
+        ));
+    }
+
+    // Resolve the output path through its deepest existing ancestor so that
+    // symlinked parent components are resolved before the containment check.
+    let output = resolve_through_existing_ancestors(&args.output);
+
+    if output.starts_with(&vault) {
+        return Err(anyhow!(
+            "output directory ({}) must not be inside the vault ({}); \
+             this would cause generated files to be re-ingested on subsequent runs",
+            output.display(),
+            vault.display()
         ));
     }
 
@@ -45,8 +60,8 @@ fn run() -> Result<()> {
         .with_context(|| "failed to load preprocessor configuration")?;
 
     let runtime = RuntimeConfig {
-        vault_root: args.vault,
-        output_root: args.output,
+        vault_root: vault,
+        output_root: output,
         app,
         dry_run: args.dry_run,
         watch: args.watch,

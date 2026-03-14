@@ -3,6 +3,7 @@ pub enum Level {
     Quiet,
     Info,
     Debug,
+    Trace,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -14,7 +15,9 @@ impl Reporter {
     pub fn new(verbose: u8, quiet: bool) -> Self {
         let level = if quiet {
             Level::Quiet
-        } else if verbose > 0 {
+        } else if verbose >= 2 {
+            Level::Trace
+        } else if verbose == 1 {
             Level::Debug
         } else {
             Level::Info
@@ -31,6 +34,12 @@ impl Reporter {
     pub fn debug(&self, message: impl AsRef<str>) {
         if self.level >= Level::Debug {
             eprintln!("[debug] {}", message.as_ref());
+        }
+    }
+
+    pub fn trace(&self, message: impl AsRef<str>) {
+        if self.level >= Level::Trace {
+            eprintln!("[trace] {}", message.as_ref());
         }
     }
 
@@ -59,6 +68,12 @@ mod tests {
     fn verbose_enables_debug_level() {
         let reporter = Reporter::new(1, false);
         assert_eq!(reporter.level, Level::Debug);
+    }
+
+    #[test]
+    fn double_verbose_enables_trace_level() {
+        let reporter = Reporter::new(2, false);
+        assert_eq!(reporter.level, Level::Trace);
     }
 
     #[test]

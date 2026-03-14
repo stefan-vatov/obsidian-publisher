@@ -21,6 +21,8 @@ tags = [
 +++
 
 
+> This is example content shipped with the Dolmen template. Replace the contents of `vault/` with your own Obsidian vault.
+
 Welcome to the local Dolmen vault.
 
 <div class="callout callout-tip">

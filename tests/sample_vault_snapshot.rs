@@ -18,10 +18,7 @@ fn collect_relative_files(root: &Path) -> BTreeSet<PathBuf> {
 #[test]
 fn sample_vault_matches_expected_snapshot() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let vault_root = manifest_dir
-        .parent()
-        .expect("repo root")
-        .join("sample-vault");
+    let vault_root = manifest_dir.join("tests/fixtures/sample_vault");
     let expected_root = manifest_dir.join("tests/fixtures/sample_vault_expected");
     let tmp = TempDir::new().expect("tempdir");
     let output_root = tmp.path().join("site");
