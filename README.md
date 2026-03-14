@@ -115,6 +115,23 @@ debounce_ms = 350                # Debounce interval for file watcher
 cargo test
 ```
 
+## Releases
+
+Merges to `main` trigger two GitHub Actions workflows:
+
+1. **Bump** — Cocogitto computes the next version from Conventional Commits, updates `Cargo.toml`, `CHANGELOG.md`, commits, and pushes a `v*.*.*` tag
+2. **Release** — triggered by the new tag, builds a Linux `x86_64-unknown-linux-musl` binary and publishes the archive and checksum to GitHub Releases
+
+The published release asset is named like:
+
+```text
+obsidian-publisher-0.2.0-x86_64-unknown-linux-musl.tar.gz
+```
+
+Release versioning is driven by Conventional Commits via [`cog`](https://docs.cocogitto.io/). `feat` produces a minor release, breaking changes produce a major release, and the remaining standard commit types are configured to publish patch releases.
+
+The automated release build uses the repository toolchain pin, currently Rust 1.88.
+
 ## License
 
 MIT
