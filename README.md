@@ -130,7 +130,7 @@ obsidian-publisher-0.2.0-x86_64-unknown-linux-musl.tar.gz
 
 Release versioning is driven by Conventional Commits via [`cog`](https://docs.cocogitto.io/). `feat` produces a minor release, breaking changes produce a major release, and the remaining standard commit types are configured to publish patch releases.
 
-The automated release build uses the repository toolchain pin, currently Rust 1.88.
+The automated release build uses the repository toolchain pin, currently Rust 1.94.
 
 ## License
 
