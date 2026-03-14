@@ -26,7 +26,7 @@ cargo install obsidian-publisher
 Or build from source:
 
 ```bash
-git clone https://github.com/thethracian/obsidian-publisher.git
+git clone https://github.com/stefan-vatov/obsidian-publisher.git
 cd obsidian-publisher
 cargo install --path .
 ```
