@@ -47,7 +47,7 @@ jobs:
 
       - name: Resolve release ref
         id: release_ref
-        run: echo "release_tag=v${{ steps.bump.outputs.version }}" >> "${GITHUB_OUTPUT}"
+        run: echo "release_tag=${{ steps.bump.outputs.version }}" >> "${GITHUB_OUTPUT}"
 
   release:
     needs: bump
