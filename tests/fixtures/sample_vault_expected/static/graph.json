@@ -1,0 +1,56 @@
+{
+  "nodes": [
+    {
+      "id": "/snippets/shared/",
+      "title": "Shared Snippets",
+      "path": "/snippets/shared/",
+      "tags": [],
+      "kind": "note"
+    },
+    {
+      "id": "/projects/roadmap/",
+      "title": "Product Roadmap",
+      "path": "/projects/roadmap/",
+      "tags": [
+        "planning",
+        "project"
+      ],
+      "kind": "note"
+    },
+    {
+      "id": "/home/",
+      "title": "Home",
+      "path": "/home/",
+      "tags": [
+        "entry",
+        "notes"
+      ],
+      "kind": "note"
+    },
+    {
+      "id": "/graph/",
+      "title": "Graph",
+      "path": "/graph/",
+      "tags": [],
+      "kind": "note"
+    }
+  ],
+  "edges": [
+    {
+      "source": "/snippets/shared/",
+      "target": "/home/"
+    },
+    {
+      "source": "/projects/roadmap/",
+      "target": "/home/"
+    },
+    {
+      "source": "/home/",
+      "target": "/snippets/shared/"
+    },
+    {
+      "source": "/home/",
+      "target": "/projects/roadmap/"
+    }
+  ]
+}
