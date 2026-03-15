@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, anyhow};
-use clap::{ArgAction, Parser};
+use clap::{ArgAction, Parser, Subcommand};
 use obsidian_publisher::config::{RuntimeConfig, resolve_through_existing_ancestors};
+use obsidian_publisher::export_source::run_export;
 use obsidian_publisher::preprocess::run_publisher;
 use obsidian_publisher::watch::run_watch;
 use std::path::PathBuf;
@@ -8,10 +9,14 @@ use std::path::PathBuf;
 #[derive(Debug, Parser)]
 #[command(author, version, about = "Obsidian vault to Zola preprocessor")]
 struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+
+    // Top-level args for backward compatibility (publish mode)
     #[arg(long)]
-    vault: PathBuf,
+    vault: Option<PathBuf>,
     #[arg(long)]
-    output: PathBuf,
+    output: Option<PathBuf>,
     #[arg(long)]
     config: Option<PathBuf>,
     #[arg(long, default_value_t = false)]
@@ -24,6 +29,19 @@ struct Cli {
     quiet: bool,
 }
 
+#[derive(Debug, Subcommand)]
+enum Commands {
+    /// Export markdown source files with frontmatter stripped
+    ExportSource {
+        /// Source directory (e.g. site/content)
+        #[arg(long)]
+        source: PathBuf,
+        /// Destination directory (e.g. site/public/_source)
+        #[arg(long)]
+        dest: PathBuf,
+    },
+}
+
 fn main() {
     if let Err(err) = run() {
         eprintln!("[error] {err:#}");
@@ -34,7 +52,22 @@ fn main() {
 fn run() -> Result<()> {
     let args = Cli::parse();
 
-    let vault = args.vault.canonicalize().unwrap_or_else(|_| args.vault.clone());
+    // Subcommand dispatch
+    if let Some(cmd) = args.command {
+        return match cmd {
+            Commands::ExportSource { source, dest } => {
+                let count = run_export(&source, &dest)?;
+                eprintln!("[export-source] exported {count} file(s)");
+                Ok(())
+            }
+        };
+    }
+
+    // Default: publish mode (backward compatible)
+    let vault_arg = args.vault.ok_or_else(|| anyhow!("--vault is required"))?;
+    let output_arg = args.output.ok_or_else(|| anyhow!("--output is required"))?;
+
+    let vault = vault_arg.canonicalize().unwrap_or_else(|_| vault_arg.clone());
 
     if !vault.exists() {
         return Err(anyhow!(
@@ -43,9 +76,7 @@ fn run() -> Result<()> {
         ));
     }
 
-    // Resolve the output path through its deepest existing ancestor so that
-    // symlinked parent components are resolved before the containment check.
-    let output = resolve_through_existing_ancestors(&args.output);
+    let output = resolve_through_existing_ancestors(&output_arg);
 
     if output.starts_with(&vault) {
         return Err(anyhow!(
