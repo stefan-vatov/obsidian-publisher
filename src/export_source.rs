@@ -61,7 +61,12 @@ pub fn run_export(source: &Path, dest: &Path) -> Result<usize> {
         if let Some(parent) = out_path.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::write(&out_path, stripped)
+        // Prepend UTF-8 BOM so browsers render correctly even without
+        // charset in the Content-Type header (Zola serves text/markdown).
+        let mut output = String::with_capacity(3 + stripped.len());
+        output.push('\u{FEFF}');
+        output.push_str(stripped);
+        fs::write(&out_path, output)
             .with_context(|| format!("failed to write {}", out_path.display()))?;
 
         count += 1;
@@ -117,11 +122,11 @@ mod tests {
         assert_eq!(count, 2);
 
         let home = fs::read_to_string(dest.join("Home.md")).unwrap();
-        assert_eq!(home, "Body.");
+        assert_eq!(home, "\u{FEFF}Body.");
         assert!(!home.contains("+++"));
 
         let note = fs::read_to_string(dest.join("nested/Note.md")).unwrap();
-        assert_eq!(note, "Nested body.");
+        assert_eq!(note, "\u{FEFF}Nested body.");
 
         assert!(!dest.join("readme.txt").exists());
     }
