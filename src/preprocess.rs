@@ -65,6 +65,7 @@ pub struct Publisher {
     runtime: RuntimeConfig,
     reporter: Reporter,
     ignore_matcher: GlobSet,
+    default_publish_matcher: GlobSet,
 }
 
 impl Publisher {
@@ -83,11 +84,14 @@ impl Publisher {
             ));
         }
 
-        let ignore_matcher = build_ignore_matcher(&runtime.app.ignore_globs)?;
+        let ignore_matcher = build_glob_matcher(&runtime.app.ignore_globs, "ignore")?;
+        let default_publish_matcher =
+            build_glob_matcher(&runtime.app.publish.default_globs, "publish default")?;
         Ok(Self {
             runtime,
             reporter,
             ignore_matcher,
+            default_publish_matcher,
         })
     }
 
@@ -787,11 +791,9 @@ impl Publisher {
             .unwrap_or("Untitled")
             .to_string();
 
-        let (mut metadata, published) = parse_metadata(
-            &frontmatter,
-            &stem,
-            self.runtime.app.publish.require_explicit,
-        );
+        let publish_by_default = !self.runtime.app.publish.require_explicit
+            || self.default_publish_matcher.is_match(path_to_unix(rel));
+        let (mut metadata, published) = parse_metadata(&frontmatter, &stem, publish_by_default);
         self.validate_metadata_dates(&mut metadata, rel);
 
         Ok(RawNote {
@@ -1759,20 +1761,21 @@ impl Publisher {
     }
 }
 
-fn build_ignore_matcher(globs: &[String]) -> Result<GlobSet> {
+fn build_glob_matcher(globs: &[String], purpose: &str) -> Result<GlobSet> {
     let mut builder = GlobSetBuilder::new();
     for pattern in globs {
-        builder.add(Glob::new(pattern).with_context(|| format!("invalid ignore glob: {pattern}"))?);
+        builder
+            .add(Glob::new(pattern).with_context(|| format!("invalid {purpose} glob: {pattern}"))?);
     }
-    Ok(builder
+    builder
         .build()
-        .context("failed to build ignore glob matcher")?)
+        .with_context(|| format!("failed to build {purpose} glob matcher"))
 }
 
 fn parse_metadata(
     frontmatter: &Mapping,
     fallback_title: &str,
-    require_explicit_publish: bool,
+    publish_by_default: bool,
 ) -> (ParsedMetadata, bool) {
     let mut map = frontmatter.clone();
 
@@ -1789,11 +1792,8 @@ fn parse_metadata(
         take_string(&mut map, &["updated"]).or_else(|| take_string(&mut map, &["modified"]));
     let publish = take_bool(&mut map, &["publish"]);
 
-    let published = if require_explicit_publish {
-        publish.unwrap_or(false)
-    } else {
-        publish.unwrap_or(true)
-    };
+    // An explicit `publish` flag always wins over the folder default.
+    let published = publish.unwrap_or(publish_by_default);
 
     let mut extra = BTreeMap::new();
     for (k, v) in map {
@@ -2355,6 +2355,7 @@ mod tests {
             app: AppConfig {
                 publish: PublishConfig {
                     require_explicit: true,
+                    default_globs: Vec::new(),
                 },
                 ignore_globs: vec![".obsidian/**".to_string()],
                 frontmatter: FrontmatterConfig {
@@ -2425,9 +2426,36 @@ mod tests {
             panic!("expected mapping")
         };
 
-        let (meta, published) = parse_metadata(&map, "Fallback", true);
+        let (meta, published) = parse_metadata(&map, "Fallback", false);
         assert_eq!(meta.title.as_deref(), Some("X"));
         assert!(!published);
+    }
+
+    #[test]
+    fn default_globs_publish_matching_notes_unless_opted_out() {
+        let tmp = TempDir::new().expect("tempdir");
+        let vault = tmp.path().join("vault");
+        let out = tmp.path().join("site");
+        fs::create_dir_all(vault.join("clippings")).expect("mkdir");
+        fs::write(
+            vault.join("clippings/Kept.md"),
+            "---\ntitle: Kept\n---\nBody\n",
+        )
+        .expect("write kept");
+        fs::write(
+            vault.join("clippings/Hidden.md"),
+            "---\npublish: false\n---\nBody\n",
+        )
+        .expect("write hidden");
+        fs::write(vault.join("Elsewhere.md"), "No frontmatter\n").expect("write elsewhere");
+
+        let mut config = runtime(&vault, &out);
+        config.app.publish.default_globs = vec!["clippings/**".to_string()];
+        run_publisher(config).expect("run");
+
+        assert!(out.join("content/clippings/Kept.md").exists());
+        assert!(!out.join("content/clippings/Hidden.md").exists());
+        assert!(!out.join("content/Elsewhere.md").exists());
     }
 
     #[test]

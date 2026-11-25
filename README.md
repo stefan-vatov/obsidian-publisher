@@ -83,6 +83,7 @@ ignore_globs = [
 
 [publish]
 require_explicit = true          # Only publish notes with `publish: true` in frontmatter
+default_globs = ["clippings/**"] # Publish matching notes unless they set `publish: false`
 
 [frontmatter]
 output = "toml"                  # "toml" (default) or "yaml"

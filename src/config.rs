@@ -39,12 +39,16 @@ impl Default for AppConfig {
 #[serde(default)]
 pub struct PublishConfig {
     pub require_explicit: bool,
+    /// Vault-relative globs whose notes publish without `publish: true`.
+    /// An explicit `publish: false` still keeps a matching note private.
+    pub default_globs: Vec<String>,
 }
 
 impl Default for PublishConfig {
     fn default() -> Self {
         Self {
             require_explicit: true,
+            default_globs: Vec::new(),
         }
     }
 }
