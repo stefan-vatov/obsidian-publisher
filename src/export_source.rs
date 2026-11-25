@@ -17,6 +17,51 @@ fn strip_frontmatter(content: &str) -> &str {
     }
 }
 
+/// The TOML between the +++ fences, if any.
+fn frontmatter_text(content: &str) -> Option<&str> {
+    let rest = content.strip_prefix("+++")?;
+    rest.find("\n+++").map(|end| &rest[..end])
+}
+
+/// Obsidian links such as "[[@handle]]" or "[[Name|Alias]]" shown by name.
+fn display_name(author: &str) -> Option<String> {
+    let name = author.replace("[[", "").replace("]]", "");
+    let name = name.rsplit('|').next().unwrap_or_default().trim().to_string();
+    (!name.is_empty()).then_some(name)
+}
+
+/// A credit line for a note copied from the web (one with an http(s) `source`),
+/// so the exported markdown never travels without its attribution.
+fn clipping_credit(frontmatter: &str) -> Option<String> {
+    let doc: toml::Value = toml::from_str(frontmatter).ok()?;
+    let extra = doc.get("extra")?;
+    let source = extra.get("source")?.as_str()?.trim();
+    if !(source.starts_with("https://") || source.starts_with("http://")) {
+        return None;
+    }
+    let mut credit = format!("> Clipped from <{source}>");
+    if let Some(title) = doc.get("title").and_then(toml::Value::as_str) {
+        credit.push_str(&format!(": “{}”", title.trim()));
+    }
+    let authors: Vec<String> = match extra.get("author") {
+        Some(toml::Value::String(one)) => display_name(one).into_iter().collect(),
+        Some(toml::Value::Array(many)) => many
+            .iter()
+            .filter_map(toml::Value::as_str)
+            .filter_map(display_name)
+            .collect(),
+        _ => Vec::new(),
+    };
+    if !authors.is_empty() {
+        credit.push_str(&format!(" by {}", authors.join(", ")));
+    }
+    if let Some(published) = extra.get("published").and_then(toml::Value::as_str) {
+        credit.push_str(&format!(", originally published {}", published.trim()));
+    }
+    credit.push_str(". All rights stay with the original author.");
+    Some(credit)
+}
+
 /// Export markdown files from `source` to `dest`, stripping TOML frontmatter.
 pub fn run_export(source: &Path, dest: &Path) -> Result<usize> {
     if !source.is_dir() {
@@ -56,6 +101,7 @@ pub fn run_export(source: &Path, dest: &Path) -> Result<usize> {
             .with_context(|| format!("failed to read {}", path.display()))?;
 
         let stripped = strip_frontmatter(&content);
+        let credit = frontmatter_text(&content).and_then(clipping_credit);
 
         let out_path = dest.join(rel);
         if let Some(parent) = out_path.parent() {
@@ -65,6 +111,10 @@ pub fn run_export(source: &Path, dest: &Path) -> Result<usize> {
         // charset in the Content-Type header (Zola serves text/markdown).
         let mut output = String::with_capacity(3 + stripped.len());
         output.push('\u{FEFF}');
+        if let Some(credit) = credit {
+            output.push_str(&credit);
+            output.push_str("\n\n");
+        }
         output.push_str(stripped);
         fs::write(&out_path, output)
             .with_context(|| format!("failed to write {}", out_path.display()))?;
@@ -78,6 +128,26 @@ pub fn run_export(source: &Path, dest: &Path) -> Result<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clipping_credit_names_source_title_authors_and_date() {
+        let fm = "\ntitle = \"How I work\"\n\n[extra]\nsource = \"https://x.com/a/status/1\"\nauthor = [\"[[@a]]\", \"[[Bee|B]]\"]\npublished = \"2026-10-25\"\n";
+        assert_eq!(
+            clipping_credit(fm).as_deref(),
+            Some(
+                "> Clipped from <https://x.com/a/status/1>: “How I work” by @a, B, originally published 2026-10-25. All rights stay with the original author."
+            )
+        );
+    }
+
+    #[test]
+    fn notes_without_a_web_source_get_no_credit() {
+        assert_eq!(clipping_credit("title = \"Mine\"\n"), None);
+        assert_eq!(
+            clipping_credit("[extra]\nsource = \"example.com/page\"\n"),
+            None
+        );
+    }
     use tempfile::TempDir;
 
     #[test]
