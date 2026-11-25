@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The release history is generated from Conventional Commits via Cocogitto.
 
 - - -
+## [v0.3.0](https://github.com/stefan-vatov/obsidian-publisher/compare/aff295e0fbf6e237354b3a7916b00a4715061233..v0.3.0) - 2026-11-25
+#### Features
+- (**publish**) publish notes under default globs without an explicit flag - ([aff295e](https://github.com/stefan-vatov/obsidian-publisher/commit/aff295e0fbf6e237354b3a7916b00a4715061233)) - Stefan Vatov
+#### Bug Fixes
+- (**ci**) pin cargo-edit to a release that builds on the pinned toolchain - ([e757c47](https://github.com/stefan-vatov/obsidian-publisher/commit/e757c47de06f718d3aa5a251080fcff67dd404fe)) - Stefan Vatov
+
+- - -
+
 ## [v0.2.0](https://github.com/stefan-vatov/obsidian-publisher/compare/dcbcd9a4b6f1caf1f49dd28f3d5c06be70ccb8c0..v0.2.0) - 2026-03-15
 #### Features
 - add export-source subcommand (#10) - ([dcbcd9a](https://github.com/stefan-vatov/obsidian-publisher/commit/dcbcd9a4b6f1caf1f49dd28f3d5c06be70ccb8c0)) - Stefan Vatov
