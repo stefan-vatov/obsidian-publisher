@@ -12,7 +12,7 @@ use crate::model::{
     RawNote, RunSummary,
 };
 use anyhow::{Context, Result, anyhow};
-use globset::{Glob, GlobSet, GlobSetBuilder};
+use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use regex::{Captures, Regex};
 use serde_yaml::{Mapping, Value as YamlValue};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
@@ -793,6 +793,12 @@ impl Publisher {
 
         let publish_by_default = !self.runtime.app.publish.require_explicit
             || self.default_publish_matcher.is_match(path_to_unix(rel));
+        if unreadable_publish_flag(&frontmatter) {
+            self.reporter.warn(format!(
+                "keeping {} private: its publish value is not true or false",
+                rel.display()
+            ));
+        }
         let (mut metadata, published) = parse_metadata(&frontmatter, &stem, publish_by_default);
         self.validate_metadata_dates(&mut metadata, rel);
 
@@ -1764,8 +1770,12 @@ impl Publisher {
 fn build_glob_matcher(globs: &[String], purpose: &str) -> Result<GlobSet> {
     let mut builder = GlobSetBuilder::new();
     for pattern in globs {
-        builder
-            .add(Glob::new(pattern).with_context(|| format!("invalid {purpose} glob: {pattern}"))?);
+        // Folder names in a vault may differ only in case.
+        let glob = GlobBuilder::new(pattern)
+            .case_insensitive(true)
+            .build()
+            .with_context(|| format!("invalid {purpose} glob: {pattern}"))?;
+        builder.add(glob);
     }
     builder
         .build()
@@ -1790,10 +1800,12 @@ fn parse_metadata(
     let date = take_string(&mut map, &["date"]).or_else(|| take_string(&mut map, &["created"]));
     let updated =
         take_string(&mut map, &["updated"]).or_else(|| take_string(&mut map, &["modified"]));
-    let publish = take_bool(&mut map, &["publish"]);
-
-    // An explicit `publish` flag always wins over the folder default.
-    let published = publish.unwrap_or(publish_by_default);
+    // A missing flag follows the folder default; a flag that is present but
+    // unreadable keeps the note private rather than publishing it by default.
+    let published = match remove_key_case_insensitive(&mut map, &["publish"]) {
+        None => publish_by_default,
+        Some(value) => publish_flag(&value).unwrap_or(false),
+    };
 
     let mut extra = BTreeMap::new();
     for (k, v) in map {
@@ -1853,17 +1865,28 @@ fn take_string(map: &mut Mapping, keys: &[&str]) -> Option<String> {
     yaml_scalar_to_string(&value)
 }
 
-fn take_bool(map: &mut Mapping, keys: &[&str]) -> Option<bool> {
-    let value = remove_key_case_insensitive(map, keys)?;
+/// Reads a `publish` value. None means it was written but could not be read.
+fn publish_flag(value: &YamlValue) -> Option<bool> {
     match value {
-        YamlValue::Bool(v) => Some(v),
-        YamlValue::String(s) => match s.to_ascii_lowercase().as_str() {
-            "true" | "yes" | "1" => Some(true),
-            "false" | "no" | "0" => Some(false),
+        YamlValue::Bool(v) => Some(*v),
+        YamlValue::Number(n) => match n.as_i64() {
+            Some(1) => Some(true),
+            Some(0) => Some(false),
+            _ => None,
+        },
+        YamlValue::String(s) => match s.trim().to_ascii_lowercase().as_str() {
+            "true" | "yes" | "y" | "on" | "1" => Some(true),
+            "false" | "no" | "n" | "off" | "0" => Some(false),
             _ => None,
         },
         _ => None,
     }
+}
+
+fn unreadable_publish_flag(frontmatter: &Mapping) -> bool {
+    let mut map = frontmatter.clone();
+    remove_key_case_insensitive(&mut map, &["publish"])
+        .is_some_and(|value| publish_flag(&value).is_none())
 }
 
 fn take_string_list(map: &mut Mapping, keys: &[&str]) -> Vec<String> {
@@ -2432,30 +2455,44 @@ mod tests {
     }
 
     #[test]
-    fn default_globs_publish_matching_notes_unless_opted_out() {
-        let tmp = TempDir::new().expect("tempdir");
-        let vault = tmp.path().join("vault");
-        let out = tmp.path().join("site");
-        fs::create_dir_all(vault.join("clippings")).expect("mkdir");
-        fs::write(
-            vault.join("clippings/Kept.md"),
-            "---\ntitle: Kept\n---\nBody\n",
-        )
-        .expect("write kept");
-        fs::write(
-            vault.join("clippings/Hidden.md"),
-            "---\npublish: false\n---\nBody\n",
-        )
-        .expect("write hidden");
-        fs::write(vault.join("Elsewhere.md"), "No frontmatter\n").expect("write elsewhere");
+    fn missing_publish_follows_the_folder_default() {
+        let yaml: YamlValue = serde_yaml::from_str("title: X").expect("yaml");
+        let YamlValue::Mapping(map) = yaml else {
+            panic!("expected mapping")
+        };
+        assert!(parse_metadata(&map, "Fallback", true).1);
+        assert!(!parse_metadata(&map, "Fallback", false).1);
+    }
 
-        let mut config = runtime(&vault, &out);
-        config.app.publish.default_globs = vec!["clippings/**".to_string()];
-        run_publisher(config).expect("run");
+    #[test]
+    fn present_publish_values_win_and_unreadable_ones_stay_private() {
+        for (raw, expected) in [
+            ("publish: false", false),
+            ("publish: \"False \"", false),
+            ("publish: off", false),
+            ("publish: n", false),
+            ("publish: 0", false),
+            ("publish:", false),
+            ("publish: [false]", false),
+            ("publish: maybe", false),
+            ("publish: yes", true),
+            ("publish: 1", true),
+        ] {
+            let yaml: YamlValue = serde_yaml::from_str(raw).expect("yaml");
+            let YamlValue::Mapping(map) = yaml else {
+                panic!("expected mapping")
+            };
+            assert_eq!(parse_metadata(&map, "Fallback", true).1, expected, "{raw}");
+        }
+    }
 
-        assert!(out.join("content/clippings/Kept.md").exists());
-        assert!(!out.join("content/clippings/Hidden.md").exists());
-        assert!(!out.join("content/Elsewhere.md").exists());
+    #[test]
+    fn default_globs_match_regardless_of_case() {
+        let matcher =
+            build_glob_matcher(&["clippings/**".to_string()], "publish default").expect("glob");
+        assert!(matcher.is_match("clippings/a.md"));
+        assert!(matcher.is_match("Clippings/sub/b.md"));
+        assert!(!matcher.is_match("notes/clippings.md"));
     }
 
     #[test]

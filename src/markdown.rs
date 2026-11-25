@@ -3,6 +3,8 @@ use std::borrow::Cow;
 use std::path::{Component, Path, PathBuf};
 
 pub fn split_frontmatter(raw: &str) -> (Option<String>, String) {
+    // A UTF-8 byte-order mark must not hide the frontmatter (and its publish flag).
+    let raw = raw.strip_prefix('\u{FEFF}').unwrap_or(raw);
     let open_len = if raw.starts_with("---\r\n") {
         5
     } else if raw.starts_with("---\n") {
@@ -22,7 +24,7 @@ pub fn split_frontmatter(raw: &str) -> (Option<String>, String) {
             line = &line[..line.len().saturating_sub(1)];
         }
 
-        if line == "---" {
+        if line.trim_end() == "---" {
             let fm = strip_single_trailing_newline(&raw[open_len..line_start])
                 .replace("\r\n", "\n")
                 .trim_end_matches('\r')
@@ -459,6 +461,13 @@ pub fn is_external_or_anchor(target: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn frontmatter_survives_a_byte_order_mark_and_trailing_spaces() {
+        let (fm, body) = split_frontmatter("\u{FEFF}---\npublish: false\n--- \nBody\n");
+        assert_eq!(fm.as_deref(), Some("publish: false"));
+        assert_eq!(body, "Body\n");
+    }
     use std::path::Path;
 
     #[test]
