@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The release history is generated from Conventional Commits via Cocogitto.
 
 - - -
+## [v0.4.0](https://github.com/stefan-vatov/obsidian-publisher/compare/a58706382dea5dc2c66a5c81c86fd029ad08e3eb..v0.4.0) - 2026-11-25
+#### Features
+- (**export**) credit web clippings at the top of exported markdown - ([6372912](https://github.com/stefan-vatov/obsidian-publisher/commit/6372912332b9338107637563bbbb41fce2564a6c)) - Stefan Vatov
+#### Bug Fixes
+- (**publish**) keep notes with unreadable publish flags private under default globs - ([a587063](https://github.com/stefan-vatov/obsidian-publisher/commit/a58706382dea5dc2c66a5c81c86fd029ad08e3eb)) - Stefan Vatov
+
+- - -
+
 ## [v0.3.0](https://github.com/stefan-vatov/obsidian-publisher/compare/aff295e0fbf6e237354b3a7916b00a4715061233..v0.3.0) - 2026-11-25
 #### Features
 - (**publish**) publish notes under default globs without an explicit flag - ([aff295e](https://github.com/stefan-vatov/obsidian-publisher/commit/aff295e0fbf6e237354b3a7916b00a4715061233)) - Stefan Vatov
